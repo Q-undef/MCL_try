@@ -65,6 +65,9 @@ parser.add_argument('--consistency_rampup', type=float,
 args = parser.parse_args()
 
 
+# CL
+
+
 # 根据给定的数据集名称和患者数量，返回相应的切片数量
 # 例，ACDC 数据集中有 7 个患者的切片数量是 136，后续传入的数据集里有标签的数量为 136
 def patients_to_slices(dataset, patiens_num):
