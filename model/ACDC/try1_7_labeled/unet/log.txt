@@ -1,0 +1,20 @@
+[09:59:46.853] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[09:59:49.204] 11 iterations per epoch
+[10:00:52.008] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, lambda_mask=1.5, mask_patch_size=16, mask_ratio=0.5, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[10:00:54.258] 11 iterations per epoch
+[10:00:56.511] iteration 1 : loss : 1.153329, loss_ce: 1.481791, loss_dice: 0.824868
+[10:00:56.606] iteration 2 : loss : 1.122424, loss_ce: 1.421108, loss_dice: 0.823740
+[10:28:59.436] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, lambda_mask=1.5, mask_patch_size=16, mask_ratio=0.5, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[10:29:01.706] 11 iterations per epoch
+[10:29:04.232] iteration 1 : loss : 1.153329, loss_ce: 1.481791, loss_dice: 0.824868
+[10:29:04.328] iteration 2 : loss : 1.122424, loss_ce: 1.421108, loss_dice: 0.823740
+[10:29:23.625] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, lambda_mask=1.5, mask_patch_size=16, mask_ratio=0.5, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[10:29:25.918] 11 iterations per epoch
+[10:29:28.327] iteration 1 : loss : 1.153329, loss_ce: 1.481791, loss_dice: 0.824868
+[10:29:28.421] iteration 2 : loss : 1.122424, loss_ce: 1.421108, loss_dice: 0.823740
+[10:37:36.178] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, lambda_mask=1.5, mask_patch_size=16, mask_ratio=0.5, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[10:37:38.525] 11 iterations per epoch
+[11:58:52.326] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, lambda_mask=1.5, mask_patch_size=16, mask_ratio=0.5, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[11:58:54.720] 11 iterations per epoch
+[11:59:13.661] Namespace(Ent_th=0.75, base_lr=0.01, batch_size=24, consistency=0.1, consistency_rampup=200.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='ACDC/try1', gpu='0', labeled_bs=12, labeled_num=7, lambda_mask=1.5, mask_patch_size=16, mask_ratio=0.5, max_iterations=2, model='unet', num_classes=4, patch_size=[256, 256], root_path='/home/qyd/code/SSL4MIS/data/ACDC', seed=2024)
+[11:59:15.997] 11 iterations per epoch

@@ -27,15 +27,19 @@ from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
 from val_2D import test_single_volume
 
+# 起到什么作用？
+# import cleanlab
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/ACDC', help='Name of Experiment')
+                    default='/home/qyd/code/SSL4MIS/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC/trymt', help='experiment_name')
+                    default='ACDC/try1', help='experiment_name')
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
 parser.add_argument('--max_iterations', type=int,
-                    default=5, help='maximum epoch number to train')
+                    default=2, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
@@ -45,6 +49,8 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=2024, help='random seed') # init seed = 1337
+parser.add_argument('--gpu', type=str, default='0', help='gpu id')
+
 
 parser.add_argument('--num_classes', type=int,  default=4,   # >= 4
                     help='output channel of network')
@@ -54,6 +60,7 @@ parser.add_argument('--labeled_bs', type=int, default=12,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=7,    
                     help='labeled data')
+
 # costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
 parser.add_argument('--consistency_type', type=str,
@@ -62,11 +69,22 @@ parser.add_argument('--consistency', type=float,
                     default=0.1, help='consistency')
 parser.add_argument('--consistency_rampup', type=float,
                     default=200.0, help='consistency_rampup')
+
+# 取模糊像素的阈值
+parser.add_argument('--Ent_th', type=float,
+                    default=0.75, help='entropy_threshold')
+
+# mask
+parser.add_argument('--mask_patch_size', type=int, default=16, help='patch_size:4,8,16,24,32') # mask的小方块有多大
+parser.add_argument('--mask_ratio', type=float, default=0.50, help='ratio') # mask的比例
+parser.add_argument('--lambda_mask', type=float, default=1.5, help='lambda_mask') # 对应论文Eq.6的γ，一个可调的超参数，用于放大mask盖住的部分的贡献
+
+
+# CL 好像没用到？
+# parser.add_argument('--CL_type', type=str,
+#                     default='both', help='CL implement type')
+
 args = parser.parse_args()
-
-
-# CL
-
 
 # 根据给定的数据集名称和患者数量，返回相应的切片数量
 # 例，ACDC 数据集中有 7 个患者的切片数量是 136，后续传入的数据集里有标签的数量为 136
@@ -99,6 +117,81 @@ def update_ema_variables(model, ema_model, alpha, global_step):
     for ema_param, param in zip(ema_model.parameters(), model.parameters()):
         ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
 
+# 计算熵（数据是3D），怎样修改为2D的？
+# def entropy_map(p, C = 4):
+#     # p N*C*W*H*D，n是样本数量，c是类别数量，w*h是图片大小，d是深度
+#     y1 = -1*torch.sum(p*torch.log(p+1e-6), dim=1) / torch.tensor(np.log(C)).cuda()
+#     return y1
+
+def entropy_map(p, C = 4):
+    # p N*C*W*H，n是样本数量，c是类别数量，w*h是图片大小
+    
+    # print("p shape =", p.shape)
+
+    y1 = -1*torch.sum(p*torch.log(p+1e-6), dim=1) / torch.tensor(np.log(C)).cuda()
+    
+    # print("y1 shape =",y1.shape)
+
+    return y1
+
+# 随机patch掩码
+# def random_mask(data, patch_size, image_size=256, mask_ratio=0.75, mask_approach='zero'):       
+    
+#     patch_num = image_size // patch_size
+#     s = [x for x in range(patch_num*patch_num)]
+#     random.shuffle(s)
+#     s = s[0:int(len(s)*mask_ratio)]     # 不要的部分，将这些patch打上mask
+#     mask = torch.zeros_like(data)
+#     new_data = data.clone()
+#     for i in range(len(s)):
+#         row = s[i] // patch_num
+#         col = s[i] % patch_num
+#         if mask_approach == 'zero':     # 将mask的部分置为0(black)
+#             new_data[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size] = 0
+#         elif mask_approach == '1-mean':     # 将mask的部分置为（1-均值）
+#             mean = torch.mean(new_data[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size])
+#             new_data[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size] = 1-mean
+#             # print("1-mean: ", 1-mean)
+#         elif mask_approach == 'one':    # 将mask的部分置为1(white)
+#             new_data[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size] = 1
+#         mask[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size] = 1
+
+#     # print('new_data_shape:', new_data.shape)  # [12, 1, 256, 256]
+#     # print('mask_shape:', mask.shape)  # [12, 1, 256, 256]
+
+#     return new_data, mask
+
+def random_mask_zero(data, patch_size, image_size=256, mask_ratio=0.75):       
+    
+    patch_num = image_size // patch_size
+    # s是patch总个数
+    s = [x for x in range(patch_num*patch_num)]
+    # print('s1=',s) # 0~255
+    random.shuffle(s)
+    # print('s2=',s)
+    s = s[0:int(len(s)*mask_ratio)]     # 不要的部分，将这些patch打上mask
+    # print('s3=',s)
+    mask = torch.ones_like(data)
+    new_data = data.clone()
+    for i in range(len(s)):
+        row = s[i] // patch_num
+        col = s[i] % patch_num
+        # 此处打了mask的像素取值是0，不打mask的是1
+        mask[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size] = 0
+
+    # print('new_data_shape:', new_data.shape)  # [12, 1, 256, 256]
+    # print('mask_shape:', mask.shape)  # [12, 1, 256, 256]
+
+    # 逐元素相乘
+    new_data = new_data * mask
+    # print('mask:', mask)
+    # print('data:', data)    
+    # print('new_data:', new_data)
+    
+
+
+    return new_data, mask
+
 
 def train(args, snapshot_path):
     base_lr = args.base_lr
@@ -123,12 +216,14 @@ def train(args, snapshot_path):
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
 
-    db_train = BaseDataSets(base_dir=args.root_path, split="train", num=None, transform=transforms.Compose([
-        RandomGenerator(args.patch_size)
-    ]))
-    # ------------------------------
-    # 此处RandomGenerator为自定义的训练数据增强操作，可以尝试在这里修改，添加随机mask操作
-    # ------------------------------
+    db_train = BaseDataSets(base_dir=args.root_path, 
+                            split="train", 
+                            num=None, 
+                            transform=transforms.Compose([
+                                RandomGenerator(args.patch_size)
+                            ]))
+    # 此处RandomGenerator为自定义的训练数据增强操作
+
     db_val = BaseDataSets(base_dir=args.root_path, split="val")
 
     total_slices = len(db_train)
@@ -147,6 +242,8 @@ def train(args, snapshot_path):
 
     # 设置为train模式，意味着模型中的 BatchNorm 和 Dropout 层将启用
     model.train()
+    # 这里ema也train的作用是？（）
+    # ema_model.train()
 
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
                            num_workers=1)
@@ -173,55 +270,100 @@ def train(args, snapshot_path):
             unlabeled_volume_batch = volume_batch[args.labeled_bs:]
 
             # 最终得到的张量是一个噪声张量，它的形状与原始未标注数据相同，但每个值都在 -0.2 和 0.2 之间
-            noise = torch.clamp(torch.randn_like(
-                unlabeled_volume_batch) * 0.1, -0.2, 0.2)
-
+            # noise = torch.clamp(torch.randn_like(
+            #     unlabeled_volume_batch) * 0.1, -0.2, 0.2)
+            
             # teacher model的有噪声输入
-            ema_inputs = unlabeled_volume_batch + noise
+            # ema_inputs = unlabeled_volume_batch + noise
 
             # student model 前向传播并计算softmax，以概率形式表示输出
             outputs = model(volume_batch)
             outputs_soft = torch.softmax(outputs, dim=1)
 
+            # student的onehot在后面并没有用到，作用？
+            # outputs_onehot = torch.argmax(outputs_soft, dim=1)
+            
             # teacher model前向传播，no_grad表示不会进行参数梯度更新
+            # with torch.no_grad():
+            #     ema_output = ema_model(ema_inputs)
+            #     ema_output_soft = torch.softmax(ema_output, dim=1)
+
+            # 有监督loss的计算
+            loss_ce = ce_loss(outputs[:args.labeled_bs], label_batch[:][:args.labeled_bs].long())
+            loss_dice = dice_loss(outputs_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
+            supervised_loss = 0.5 * (loss_dice + loss_ce)
+            
+            
+            # ----------------
+            # mask_unlabeled_volume_batch, mask = random_mask(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio, 'zero')
+            # 尝试一：将随机mask视作teacher模型输入图像的噪声
+            mask_ema_inputs, mask = random_mask_zero(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio)
+            ema_inputs = unlabeled_volume_batch
+
             with torch.no_grad():
                 ema_output = ema_model(ema_inputs)
                 ema_output_soft = torch.softmax(ema_output, dim=1)
+                # -------------------------
+                mask_ema_output = ema_model(mask_ema_inputs)
+                mask_ema_output_soft = torch.softmax(mask_ema_output, dim=1)
+            
+            # consistency_weight = get_current_consistency_weight(iter_num//150)
+            consistency_weight = 1
+            # 无标签数据的student预测输出与有噪声mask的teacher输出之间的概率分布mse距离
+            consistency_dist = losses.softmax_mse_loss(outputs[args.labeled_bs:], mask_ema_output)  
+            print('consist_dist_shape: ', consistency_dist.shape)
+            
+            # teacher生成的伪标签，通过选择每个像素最高概率的类别得到的
+            # pseudo_label = torch.argmax(torch.softmax(logits_unlabeled_volume, dim=1), dim=1).squeeze(0)
+
+            # Entropy Selection
+            EMap = entropy_map(outputs_soft[args.labeled_bs:], C=num_classes)
+            # 取高熵值作为mask，此处阈值可调，多尝试
+            # 问题：阈值是在训练过程中不断变化的，每一次循环生成的mask似乎都不一样。
+            # 怎样计算一致性loss？
+            #threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)
+            threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations) 
+            
+            mask = (EMap >= threshold).float()
+            mask = torch.unsqueeze(mask, 1)
+            # 使类别数（第二个维度）变成num_classes
+            for i in (log(num_classes)):
+                print('i:',i)
+                mask = torch.cat((mask, mask), 1)
+
+            print('mask3: ', mask.shape)
 
             
-            # loss的计算
-            loss_ce = ce_loss(outputs[:args.labeled_bs],
-                              label_batch[:][:args.labeled_bs].long())
+
+            # loss_ce_2 = ce_loss_mask(logits_masked_unlabeled_volume, pseudo_label[:].long())
             
-            # print('outputs_soft_shape:', outputs_soft.shape)
-            # print('in_dice_outputs_soft_shape:', outputs_soft[:args.labeled_bs].shape)
-            # print('label_batch_shape:', label_batch.shape)
-            # print('in_dice_pre_label_batch_shape:', label_batch[:args.labeled_bs].shape)
-            # print('in_dice_label_batch_shape:', label_batch[:args.labeled_bs].unsqueeze(1).shape)
+            # mask_1 = mask.squeeze(1)    # mask盖住的部分
+            # mask_2 = 1 - mask_1         # 没有盖mask的部分
+            
+            # loss_ce_2_mask_1 = loss_ce_2 * mask_1.float()
+            # loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / mask_1.sum()
+            # loss_ce_2_mask_2 = loss_ce_2 * mask_2.float()
+            # loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / mask_2.sum()
+
+            # loss_ce_2 = args.lambda_mask * loss_ce_2_mask_1 + loss_ce_2_mask_2
+            
+            # loss_dice_2 = dice_loss(logits_masked_unlabeled_volume, pseudo_label.unsqueeze(1), softmax=True)
 
             
-            loss_dice = dice_loss(
-                outputs_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
-            
-            supervised_loss = 0.5 * (loss_dice + loss_ce)
-            
-            consistency_weight = get_current_consistency_weight(iter_num//150)
-
-            # if iter_num < 1000:
-            #     consistency_loss = 0.0
-            # else:
-                # 计算s和t在未标注数据上输出的一致性损失
-            consistency_loss = torch.mean(
-                (outputs_soft[args.labeled_bs:]-ema_output_soft)**2)
+            if iter_num < 1000:
+                consistency_loss = 0.0
+            else: 
+                consistency_loss = 0.5 * (loss_ce_2 + loss_dice_2)
+                # ---------------------
 
             loss = supervised_loss + consistency_weight * consistency_loss
-
+            
             optimizer.zero_grad() # 将模型参数的梯度清零
             loss.backward() # 根据loss进行反向传播，计算损失函数关于模型参数的梯度
             optimizer.step() # 使用计算出的梯度来更新模型的参数，momentum SGD
-
+            
             update_ema_variables(model, ema_model, args.ema_decay, iter_num)
-
+            
             # 更新学习率，将计算出的学习率应用到优化器的所有参数组中
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
             for param_group in optimizer.param_groups:
@@ -230,7 +372,6 @@ def train(args, snapshot_path):
             # 循环次数计数器+1
             iter_num = iter_num + 1
 
-            # 使用 TensorBoard 和日志记录器记录损失值、学习率和性能指标
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
@@ -245,8 +386,6 @@ def train(args, snapshot_path):
                 (iter_num, loss.item(), loss_ce.item(), loss_dice.item()))
 
             # 定期记录和可视化图像
-            # tensorboard 出现报错：未找到该命令；安装tensorboard之后报错：元类冲突；
-            # 重新开conda环境，python3.10，直接pip install tensorboard，解决了
             if iter_num % 20 == 0:
                 image = volume_batch[1, 0:1, :, :]
                 writer.add_image('train/Image', image, iter_num)
@@ -278,7 +417,7 @@ def train(args, snapshot_path):
                 performance = np.mean(metric_list, axis=0)[0]
 
                 mean_hd95 = np.mean(metric_list, axis=0)[1]
-                
+
                 writer.add_scalar('info/val_mean_dice', performance, iter_num)
                 writer.add_scalar('info/val_mean_hd95', mean_hd95, iter_num)
 
@@ -311,8 +450,10 @@ def train(args, snapshot_path):
     writer.close()
     return "Training Finished!"
 
-
 if __name__ == "__main__":
+    # -------------------------
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+
     if not args.deterministic:
         cudnn.benchmark = True
         cudnn.deterministic = False
