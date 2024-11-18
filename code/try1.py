@@ -331,7 +331,7 @@ def train(args, snapshot_path):
                 print('i:',i)
                 mask = torch.cat((mask, mask), 1)
 
-            print('mask3: ', mask.shape)
+            # print('mask3: ', mask.shape)
 
             
 
