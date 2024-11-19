@@ -268,7 +268,7 @@ def train(args, snapshot_path):
             # pseudo_label = torch.argmax(torch.softmax(ema_output, dim=1), dim=1).squeeze(0)
 
             # Entropy Selection
-            EMap = entropy_map(outputs_soft[args.labeled_bs:], C=num_classes)
+            EMap = entropy_map(ema_output_soft[args.labeled_bs:], C=num_classes)
             # 取高熵值作为mask，此处阈值可调
             #threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)
             threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations) 
