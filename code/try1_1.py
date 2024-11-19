@@ -86,9 +86,7 @@ parser.add_argument('--lambda_mask', type=float, default=1.5, help='lambda_mask'
 
 
 # CL 好像没用到？
-# parser.add_argument('--CL_type', type=str,
-#                     default='both', help='CL implement type')
-
+# parser.add_argument('--CL_type', type=str, default='both', help='CL implement type')
 args = parser.parse_args()
 
 # 根据给定的数据集名称和患者数量，返回相应的切片数量
