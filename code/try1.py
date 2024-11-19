@@ -5,6 +5,7 @@ import random
 import shutil
 import sys
 import time
+# import math
 
 import numpy as np
 import torch
@@ -34,12 +35,16 @@ from val_2D import test_single_volume
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default='/home/qyd/code/SSL4MIS/data/ACDC', help='Name of Experiment')
+
 parser.add_argument('--exp', type=str,
                     default='ACDC/try1', help='experiment_name')
+                    
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
+
 parser.add_argument('--max_iterations', type=int,
                     default=2, help='maximum epoch number to train')
+
 parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
@@ -253,6 +258,7 @@ def train(args, snapshot_path):
                           momentum=0.9, weight_decay=0.0001)
     ce_loss = CrossEntropyLoss()
     dice_loss = losses.DiceLoss(num_classes)
+    ce_loss_mask = CrossEntropyLoss(reduction='none')
 
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader)))  # 记录每个 epoch 的迭代次数
@@ -297,7 +303,7 @@ def train(args, snapshot_path):
             # ----------------
             # mask_unlabeled_volume_batch, mask = random_mask(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio, 'zero')
             # 尝试一：将随机mask视作teacher模型输入图像的噪声
-            mask_ema_inputs, mask = random_mask_zero(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio)
+            mask_ema_inputs, mask_as_noise = random_mask_zero(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio)
             ema_inputs = unlabeled_volume_batch
 
             with torch.no_grad():
@@ -307,14 +313,14 @@ def train(args, snapshot_path):
                 mask_ema_output = ema_model(mask_ema_inputs)
                 mask_ema_output_soft = torch.softmax(mask_ema_output, dim=1)
             
-            # consistency_weight = get_current_consistency_weight(iter_num//150)
-            consistency_weight = 1
+            consistency_weight = get_current_consistency_weight(iter_num//150)
+            # consistency_weight = 1
             # 无标签数据的student预测输出与有噪声mask的teacher输出之间的概率分布mse距离
             consistency_dist = losses.softmax_mse_loss(outputs[args.labeled_bs:], mask_ema_output)  
-            print('consist_dist_shape: ', consistency_dist.shape)
+            # print('consist_dist_shape: ', consistency_dist.shape) # [12, 4, 256, 256]
             
             # teacher生成的伪标签，通过选择每个像素最高概率的类别得到的
-            # pseudo_label = torch.argmax(torch.softmax(logits_unlabeled_volume, dim=1), dim=1).squeeze(0)
+            pseudo_label = torch.argmax(torch.softmax(ema_output, dim=1), dim=1).squeeze(0)
 
             # Entropy Selection
             EMap = entropy_map(outputs_soft[args.labeled_bs:], C=num_classes)
@@ -324,21 +330,23 @@ def train(args, snapshot_path):
             #threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)
             threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations) 
             
-            mask = (EMap >= threshold).float()
-            mask = torch.unsqueeze(mask, 1)
+            ent_mask = (EMap >= threshold).float()
+            ent_mask = torch.unsqueeze(ent_mask, 1)
             # 使类别数（第二个维度）变成num_classes
-            for i in (log(num_classes)):
-                print('i:',i)
-                mask = torch.cat((mask, mask), 1)
+            '''对于数字, np和math里log2一样'''
+            # t1 = np.log2(num_classes)
+            # t2 = math.log2(num_classes)
+            t = np.log2(num_classes)
+            for i in range(0, int(t)):
+                # print('i:',i)
+                ent_mask = torch.cat((ent_mask, ent_mask), 1)
 
-            # print('mask3: ', mask.shape)
-
-            
+            # print('ent_mask: ', ent_mask.shape)  # [12, 4, 256, 256]
 
             # loss_ce_2 = ce_loss_mask(logits_masked_unlabeled_volume, pseudo_label[:].long())
             
-            # mask_1 = mask.squeeze(1)    # mask盖住的部分
-            # mask_2 = 1 - mask_1         # 没有盖mask的部分
+            # ent_mask_1 = ent_mask.squeeze(1)    # entmask盖住的部分
+            # ent_mask_2 = 1 - ent_mask_1         # 没有盖entmask的部分
             
             # loss_ce_2_mask_1 = loss_ce_2 * mask_1.float()
             # loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / mask_1.sum()
@@ -353,8 +361,14 @@ def train(args, snapshot_path):
             if iter_num < 1000:
                 consistency_loss = 0.0
             else: 
-                consistency_loss = 0.5 * (loss_ce_2 + loss_dice_2)
+                # consistency_loss = 0.5 * (loss_ce_2 + loss_dice_2)
                 # ---------------------
+                # 使用ACMT中的loss
+                consistency_loss = torch.sum(ent_mask*consistency_dist)/(torch.sum(ent_mask)+1e-16)
+                # 尝试修改
+                # consistency_loss =
+
+            
 
             loss = supervised_loss + consistency_weight * consistency_loss
             
