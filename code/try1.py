@@ -38,7 +38,7 @@ parser.add_argument('--root_path', type=str,
 
 parser.add_argument('--exp', type=str,
                     default='ACDC/try1', help='experiment_name')
-                    
+
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
 
@@ -229,7 +229,7 @@ def train(args, snapshot_path):
                             ]))
     # 此处RandomGenerator为自定义的训练数据增强操作
 
-    db_val = BaseDataSets(base_dir=args.root_path, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path, split="test")
 
     total_slices = len(db_train)
     labeled_slice = patients_to_slices(args.root_path, args.labeled_num)
@@ -302,7 +302,7 @@ def train(args, snapshot_path):
             
             # ----------------
             # mask_unlabeled_volume_batch, mask = random_mask(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio, 'zero')
-            # 尝试一：将随机mask视作teacher模型输入图像的噪声
+            # 尝试1.1：将随机mask视作teacher模型输入图像的噪声（consistency weight=1）
             mask_ema_inputs, mask_as_noise = random_mask_zero(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio)
             ema_inputs = unlabeled_volume_batch
 
@@ -313,6 +313,7 @@ def train(args, snapshot_path):
                 mask_ema_output = ema_model(mask_ema_inputs)
                 mask_ema_output_soft = torch.softmax(mask_ema_output, dim=1)
             
+            # 尝试1.2：将随机mask视作teacher模型输入图像的噪声（variable consistency weight）
             consistency_weight = get_current_consistency_weight(iter_num//150)
             # consistency_weight = 1
             # 无标签数据的student预测输出与有噪声mask的teacher输出之间的概率分布mse距离
@@ -320,7 +321,7 @@ def train(args, snapshot_path):
             # print('consist_dist_shape: ', consistency_dist.shape) # [12, 4, 256, 256]
             
             # teacher生成的伪标签，通过选择每个像素最高概率的类别得到的
-            pseudo_label = torch.argmax(torch.softmax(ema_output, dim=1), dim=1).squeeze(0)
+            # pseudo_label = torch.argmax(torch.softmax(ema_output, dim=1), dim=1).squeeze(0)
 
             # Entropy Selection
             EMap = entropy_map(outputs_soft[args.labeled_bs:], C=num_classes)
