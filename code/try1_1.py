@@ -37,7 +37,7 @@ parser.add_argument('--root_path', type=str,
                     default='/home/qyd/code/SSL4MIS/data/ACDC', help='Name of Experiment')
 
 parser.add_argument('--exp', type=str,
-                    default='ACDC/try1', help='experiment_name')
+                    default='ACDC/try1_1_entmask', help='experiment_name')
 
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
@@ -154,6 +154,15 @@ def random_mask_zero(data, patch_size, image_size=256, mask_ratio=0.75):
 
     return new_data, mask
 
+def ent_mask_zero(data, emap, threshold):
+    new_data = data.clone()
+    # 此处打了entmask的像素取值是0，不打的是1
+    entmask = (emap < threshold).float()
+    entmask = torch.unsqueeze(entmask, 1)
+    new_data = new_data * entmask
+
+    return new_data
+
 
 def train(args, snapshot_path):
     base_lr = args.base_lr
@@ -258,8 +267,6 @@ def train(args, snapshot_path):
             supervised_loss = 0.5 * (loss_dice + loss_ce)
             
             
-            # ----------------修改entMap作为mask
-            # mask_unlabeled_volume_batch, mask = random_mask(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio, 'zero')
             
             # consistency_weight = get_current_consistency_weight(iter_num//150)
             consistency_weight = 1
@@ -268,47 +275,55 @@ def train(args, snapshot_path):
             # pseudo_label = torch.argmax(torch.softmax(ema_output, dim=1), dim=1).squeeze(0)
 
             # Entropy Selection
-            EMap = entropy_map(ema_output_soft[args.labeled_bs:], C=num_classes)
+            EMap = entropy_map(ema_output_soft, C=num_classes)
             # 取高熵值作为mask，此处阈值可调
             #threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)
             threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations) 
             
-            ent_mask = (EMap >= threshold).float()
-            ent_mask = torch.unsqueeze(ent_mask, 1)
-
-            # 使类别数（第二个维度）变成num_classes
-            '''对于数字, np和math里log2一样'''
-            # t1 = np.log2(num_classes)
-            # t2 = math.log2(num_classes)
-            t = np.log2(num_classes)
-            for i in range(0, int(t)):
-                ent_mask = torch.cat((ent_mask, ent_mask), 1)
-            # print('ent_mask: ', ent_mask.shape)  # [12, 4, 256, 256]
-
-            # loss_ce_2 = ce_loss_mask(logits_masked_unlabeled_volume, pseudo_label[:].long())
+            # 被选中的像素为1，否则为0
+            ent_mask = (EMap >= threshold).float()  # [12, 256, 256]
+            ent_mask = torch.unsqueeze(ent_mask, 1) # [12, 1, 256, 256]
             
-            # ent_mask_1 = ent_mask.squeeze(1)    # entmask盖住的部分
-            # ent_mask_2 = 1 - ent_mask_1         # 没有盖entmask的部分
-            
-            # loss_ce_2_mask_1 = loss_ce_2 * mask_1.float()
-            # loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / mask_1.sum()
-            # loss_ce_2_mask_2 = loss_ce_2 * mask_2.float()
-            # loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / mask_2.sum()
 
-            # loss_ce_2 = args.lambda_mask * loss_ce_2_mask_1 + loss_ce_2_mask_2
+            # ----------------给原始图像盖上mask
+            # mask_unlabeled_volume_batch, mask = random_mask(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio, 'zero')
+            mask_unlabeled_volume_batch = ent_mask_zero(unlabeled_volume_batch, EMap, threshold)
+
+            # student
+            logits_masked_unlabeled_volume = model(mask_unlabeled_volume_batch)  # [12, 4, 256, 256]
+
+            # teacher
+            logits_unlabeled_volume = ema_model(unlabeled_volume_batch)  # [12, 4, 256, 256]
+
+            # teacher生成的伪标签，通过选择每个像素最高概率的类别得到的
+            # [12, 256, 256]
+            pseudo_label = torch.argmax(torch.softmax(logits_unlabeled_volume, dim=1), dim=1).squeeze(0)
+
+            # print('logits_unlabeled_volume_shape:', logits_unlabeled_volume.shape)
+            # print('logits_masked_unlabeled_volume_shape:', logits_masked_unlabeled_volume.shape)
+            # print('pseudo_label_shape:', pseudo_label.shape)
             
-            # loss_dice_2 = dice_loss(logits_masked_unlabeled_volume, pseudo_label.unsqueeze(1), softmax=True)
+            loss_ce_2 = ce_loss_mask(logits_masked_unlabeled_volume, pseudo_label[:].long())
+            
+            ent_mask_1 = ent_mask.squeeze(1)    # entmask盖住的部分
+            ent_mask_2 = 1 - ent_mask_1         # 没有盖entmask的部分
+            # print('entmask1_shape:', ent_mask_1.shape)
+            
+            loss_ce_2_mask_1 = loss_ce_2 * ent_mask_1.float()
+            loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / ent_mask_1.sum()
+            loss_ce_2_mask_2 = loss_ce_2 * ent_mask_2.float()
+            loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / ent_mask_2.sum()
+
+            loss_ce_2 = args.lambda_mask * loss_ce_2_mask_1 + loss_ce_2_mask_2
+            
+            loss_dice_2 = dice_loss(logits_masked_unlabeled_volume, pseudo_label.unsqueeze(1), softmax=True)
 
             
             if iter_num < 1000:
                 consistency_loss = 0.0
             else: 
-                # consistency_loss = 0.5 * (loss_ce_2 + loss_dice_2)
-                # ---------------------
-                # 使用ACMT中的loss
-                consistency_loss = torch.sum(ent_mask*consistency_dist)/(torch.sum(ent_mask)+1e-16)
-                # 尝试修改
-                # consistency_loss =
+                consistency_loss = 0.5 * (loss_ce_2 + loss_dice_2)
+                
 
             
 
