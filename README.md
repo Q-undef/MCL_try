@@ -11,8 +11,8 @@ MCL相关尝试
 
   尝试想法：
 
-  - 将随机掩码作为ACMT中teacher的噪声传入，并修改consistent loss的定义公式（怎样修改？）
-  - 取消ACMT中的随机噪声，在生成entMap之后，将Map作为掩码重新经过student，按照MCL的方法计算loss，需要修改计算方法（因为Map是以像素为单位生成的，MCL中参与loss运算的mask是以patch为单位）
+  - 将随机掩码作为ACMT中teacher的噪声传入，并修改consistent loss的定义公式（try1.py）（pass）
+  - 使用原图传入teacher模型得到概率输出，生成entMap之后，将Map作为掩码经过student，按照MCL的方法计算loss（try1_1.py）
   - ......
 
 
