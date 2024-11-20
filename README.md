@@ -13,6 +13,10 @@ MCL相关尝试
 
   - 将随机掩码作为ACMT中teacher的噪声传入，并修改consistent loss的定义公式（try1.py）（pass）
   - 使用原图传入teacher模型得到概率输出，生成entMap之后，将Map作为掩码经过student，按照MCL的方法计算loss（try1_1.py）
+    - 出现问题：数据消失
+    - ![7c88a00e745183686cdba636ed20d23](https://github.com/user-attachments/assets/91a2b00a-b202-4821-963a-36c1ed20bc6b)
+    - ![04ac12f6a34c67b00822968a45583f7](https://github.com/user-attachments/assets/d13bdca4-6275-4760-a206-760739daf231)
+
   - ......
 
 
