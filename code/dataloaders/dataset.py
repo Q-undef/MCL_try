@@ -53,7 +53,6 @@ class BaseDataSets(Dataset):
                 self.sample_list = f.readlines()
             self.sample_list = [item.replace("\n", "") for item in self.sample_list]
 
-
         if num is not None and self.split == "train":
             self.sample_list = self.sample_list[:num]
         print("total {} samples".format(len(self.sample_list)))
