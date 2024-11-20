@@ -14,10 +14,10 @@ MCL相关尝试
   - 将随机掩码作为ACMT中teacher的噪声传入，并修改consistent loss的定义公式（try1.py）（pass）
   - 使用原图传入teacher模型得到概率输出，生成entMap之后，将Map作为掩码经过student，按照MCL的方法计算loss（try1_1.py）
 
-### 问题、笔记、结果详见'notes.md'
+# 问题、笔记、结果详见'notes.md'
 
 
-## 备注
+
 ### 在vscode管理github时遇到的报错（持续更新ing）
 - error: RPC failed; curl 16 Error in the HTTP2 framing layer fatal: expected flush after ref listing
   - 强制 git 使用 HTTP 1.1：git config --global http.version HTTP/1.1
