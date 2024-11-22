@@ -1,4 +1,12 @@
 # 笔记记录：
+ 
+## MCL在val和test上的结果对比
+- mcl_val_7_labeled，max_mean_dice：90.41
+![49cc74f9f1fdd708ebf61d8103fc07e](https://github.com/user-attachments/assets/08067a8c-cea6-49cb-88c6-e26e199648d4)
+- mcl_test_7_labeled，max_mean_dice：90.33
+![0c0a61c2e8737f5eecbff3bf424742f](https://github.com/user-attachments/assets/f5053b9e-14e9-4d5d-b169-7a27ca0f60d5)
+
+
 
 ## 使用原图传入teacher模型得到概率输出，生成entMap之后，将Map作为掩码经过student，按照MCL的方法计算loss（try1_1.py）
 ### 出现问题1：数据消失
@@ -18,11 +26,4 @@
 ### 可能原因1：数据消失是因为weight计算时有除法，分母可能过于小，导致出现除0现象
 - 尝试优化1：查看mask的像素数量，根据高于阈值的数量占比，修改阈值
 - ...
-
-
-## MCL在val和test上的结果对比
-- mcl_val_7_labeled，max_mean_dice：90.41
-![49cc74f9f1fdd708ebf61d8103fc07e](https://github.com/user-attachments/assets/08067a8c-cea6-49cb-88c6-e26e199648d4)
-- mcl_test_7_labeled，max_mean_dice：90.33
-![0c0a61c2e8737f5eecbff3bf424742f](https://github.com/user-attachments/assets/f5053b9e-14e9-4d5d-b169-7a27ca0f60d5)
 
