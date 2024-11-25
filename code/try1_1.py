@@ -54,7 +54,7 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=2024, help='random seed') # init seed = 1337
-parser.add_argument('--gpu', type=str, default='6', help='gpu id')
+parser.add_argument('--gpu', type=str, default='0', help='gpu id')
 
 
 parser.add_argument('--num_classes', type=int,  default=4,   # >= 4
@@ -193,7 +193,7 @@ def train(args, snapshot_path):
                             ]))
     # 此处RandomGenerator为自定义的训练数据增强操作
 
-    db_val = BaseDataSets(base_dir=args.root_path, split="test")
+    db_val = BaseDataSets(base_dir=args.root_path, split="val")
 
     total_slices = len(db_train)
     labeled_slice = patients_to_slices(args.root_path, args.labeled_num)
@@ -226,11 +226,11 @@ def train(args, snapshot_path):
     # 用于计算mask后的输出交叉熵损失
     '''
     注释掉weight计算后会报错: RuntimeError: grad can be implicitly created only for scalar output
-    是reduction='none'的问题, why?
+    是reduction='none'的问题
     将reduction设置为'none'计算出的loss直接返回n个样本的loss, 即是一个元素个数和样本数相等的向量
     '''
-    # ce_loss_mask = CrossEntropyLoss(reduction='none') 
-    ce_loss_mask = CrossEntropyLoss()
+    ce_loss_mask = CrossEntropyLoss(reduction='none') 
+    # ce_loss_mask = CrossEntropyLoss()
 
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader)))  # 记录每个 epoch 的迭代次数
@@ -283,8 +283,9 @@ def train(args, snapshot_path):
             # Entropy Selection
             EMap = entropy_map(ema_output_soft, C=num_classes)
             # 取高熵值作为mask，此处阈值可调
-            #threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)
-            threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations) 
+            # threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)  # 0.75->0.6
+            # threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations)  # 0.75->0.95
+            threshold = args.Ent_th + (0.9-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations)  # 0.75->0.9
             
             # 被选中的像素为1，否则为0
             ent_mask = (EMap >= threshold).float()  # [12, 256, 256]
@@ -306,6 +307,7 @@ def train(args, snapshot_path):
 
             # teacher生成的伪标签，通过选择每个像素最高概率的类别得到的
             # [12, 256, 256]
+            # pseudo_label = torch.argmax(torch.softmax(logits_unlabeled_volume, dim=1), dim=1).squeeze(0)
             pseudo_label = torch.argmax(torch.softmax(ema_output, dim=1), dim=1).squeeze(0)
 
             # print('ema_output_shape:', ema_output.shape)
@@ -314,17 +316,17 @@ def train(args, snapshot_path):
             
             loss_ce_2 = ce_loss_mask(logits_masked_unlabeled_volume, pseudo_label[:].long())
 
-            '''
+            ''''''
             ent_mask_1 = ent_mask.squeeze(1)    # entmask盖住的部分 ([12, 256, 256])
             ent_mask_2 = 1 - ent_mask_1         # 没有盖entmask的部分
             
             loss_ce_2_mask_1 = loss_ce_2 * ent_mask_1.float()
-            loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / ent_mask_1.sum()
+            loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / (ent_mask_1.sum()+1.0)
             loss_ce_2_mask_2 = loss_ce_2 * ent_mask_2.float()
-            loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / ent_mask_2.sum()
+            loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / (ent_mask_2.sum()+1.0)
 
             loss_ce_2 = args.lambda_mask * loss_ce_2_mask_1 + loss_ce_2_mask_2
-            '''
+            ''''''
 
             loss_dice_2 = dice_loss(logits_masked_unlabeled_volume, pseudo_label.unsqueeze(1), softmax=True)
 
