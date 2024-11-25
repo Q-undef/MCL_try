@@ -23,7 +23,17 @@
   - entmask_noMaskWeight_test_7_labeled，max_mean_dice：89.22
   ![cf8e96a3c49878d72e1f00ca580dcde](https://github.com/user-attachments/assets/69820a5e-927e-499a-8823-8e740cdbd7a1)
 
-### 可能原因1：数据消失是因为weight计算时有除法，分母可能过于小，导致出现除0现象
-- 尝试优化1：查看mask的像素数量，根据高于阈值的数量占比，修改阈值
-- ...
+### 原因：数据消失是因为weight计算时有除法，分母可能过于小，导致出现除0现象
+- 尝试1：在分母加常数防止除0
+  - preventDivision0_plus1_val_7_labeled，max_mean_dice：85.84
+![2d0b86cc7663c57edb2302e1f44b404](https://github.com/user-attachments/assets/7d90dd86-601b-424e-856d-32c05bad9092)
+  - preventDivision0_val_7_labeled（分母添加1e6），max_mean_dice：84.13
+![05029a26515fcc308d88d0d21b73b29](https://github.com/user-attachments/assets/67e96218-b81e-455d-aa0f-ba80a74420da)
+  效果不好，考虑其他方法
+- 尝试2：查看mask的像素数量，根据高于阈值的数量占比，修改阈值
+  - 普通修改阈值0.75->0.6
+  - ent_mcl_thres7560_pdplus1_val_7_labeled，max_mean_dice：84.11
+![c34b07f029e30e6cb05c883d890eec1](https://github.com/user-attachments/assets/ea7c937e-34f9-4948-89b0-a9d8c75e3d02)
+  效果不好，pass
+  - 每轮次记录并输出mask的像素数量和阈值，查看每次高于阈值的数量占比，尝试找到新的阈值计算方法
 
