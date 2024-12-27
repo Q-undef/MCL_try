@@ -1,8 +1,8 @@
 # MCL_try
-MCL相关尝试
+MCL-Entropy mask相关尝试
 
-## Try1：Entropy
-- 尝试按照熵的计算方式生成模糊目标选择图，以像素为单位生成掩码（而不是以patch为单位）
+## try1 pixel entmask
+- 尝试按照熵的计算方式生成模糊目标选择图，以像素为单位生成掩码
 
   问题：
 
@@ -12,7 +12,13 @@ MCL相关尝试
   尝试想法：
 
   - 将随机掩码作为ACMT中teacher的噪声传入，并修改consistent loss的定义公式（try1.py）（pass）
-  - 使用原图传入teacher模型得到概率输出，生成entMap之后，将Map作为掩码经过student，按照MCL的方法计算loss（try1_1.py）
+  - 使用原图传入teacher模型得到概率输出，生成entMap之后，将Map作为掩码经过student，按照MCL的方法计算loss
+
+## try2 patch entmask
+- 一：先按像素筛选出mask像素，然后通过分块计数将mask化为patch
+- 二：计算每一个patch的熵值均值，将patch按熵值均值从高到低排序，按照一定比例选取前百分之r的patch作为mask
+- 三：对于教师模型encoder输出的特征图，使其通过一个另外的注意力decoder计算自注意力，引导mask的生成
+- ......
 
 # 问题、笔记、结果详见'notes.md'
 
