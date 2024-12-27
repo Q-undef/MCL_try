@@ -1,6 +1,6 @@
 # 笔记记录：
 
- （11.22-11.29）
+# （11.22-11.29）
 ## MCL在val和test上的结果对比
 - mcl_val_7_labeled，max_mean_dice：90.41
 ![49cc74f9f1fdd708ebf61d8103fc07e](https://github.com/user-attachments/assets/08067a8c-cea6-49cb-88c6-e26e199648d4)
@@ -36,10 +36,14 @@
   效果不好，pass
   - 每轮次记录并输出mask的像素数量和阈值，查看每次高于阈值的数量占比，尝试找到新的阈值计算方法
 
-（11.29-12.27）
+# （11.29-12.27）
 ## 修改pixel mask为分块计数的patch mask
 ### 可视化
 ![image](https://github.com/user-attachments/assets/90571a26-c4c7-44f6-ad78-a87dab473fe1)
 ### 问题：高轮次时mask消失
 - 计数百分比也是在entmask基础上，仍然难以找到合适的阈值，固定阈值为0.75时在1000iter左右就没有被打上mask的图像了，后续全程是没有mask在训练；阈值逐步下降到0.6，也会出现很多没有mask的以及mask区域特别少的情况。
-## 生成entmask的另一种思路：取平均后按降序排列，取前75%（r为可调超参），能够保证每张图都有mask覆盖
+## 取平均后按降序排列，取前75%（r为可调超参）
+- 能够保证每张图都有mask覆盖
+- 类似CGML（Mask生成方法：对于每一个patch中的像素熵值取平均，然后按升序排列，给定一个r，前[r*n]个块被选中为mask）
+### 当前结果汇总
+![image](https://github.com/user-attachments/assets/eb5e9229-694c-43a2-904b-dce7df57c342)
