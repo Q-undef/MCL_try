@@ -54,7 +54,7 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=2024, help='random seed') # init seed = 1337
-parser.add_argument('--gpu', type=str, default='3', help='gpu id')
+parser.add_argument('--gpu', type=str, default='2', help='gpu id')
 
 
 parser.add_argument('--num_classes', type=int,  default=4,   # >= 4
@@ -188,7 +188,6 @@ def ent_mask_patch_countnum(data, emap, thres, patch_size, image_size=256):
             # 此处打了mask的取值是0，不打mask的是1
             entmask_multi[:,:,row*patch_size:(row+1)*patch_size,col*patch_size:(col+1)*patch_size] = 0
     
-    
     new_data = new_data * entmask_multi
 
     # 此处打了mask的取值是1，不打mask的是0
@@ -196,7 +195,10 @@ def ent_mask_patch_countnum(data, emap, thres, patch_size, image_size=256):
 
     return new_data, entmask
 
+def ent_mask_patch_mean(data, emap, patch_size, image_size=256):
+    data =
 
+    return new_data, entmask
 
 
 def train(args, snapshot_path):
@@ -230,7 +232,7 @@ def train(args, snapshot_path):
                             ]))
     # 此处RandomGenerator为自定义的训练数据增强操作
 
-    db_val = BaseDataSets(base_dir=args.root_path, split="test")
+    db_val = BaseDataSets(base_dir=args.root_path, split="val")
 
     total_slices = len(db_train)
     labeled_slice = patients_to_slices(args.root_path, args.labeled_num)
@@ -323,14 +325,21 @@ def train(args, snapshot_path):
             # threshold = args.Ent_th - 0.15*ramps.sigmoid_rampup(iter_num, max_iterations)  # 0.75->0.6
             # threshold = args.Ent_th + (0.95-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations)  # 0.75->0.95
             # threshold = args.Ent_th + (0.9-args.Ent_th)*ramps.sigmoid_rampup(iter_num, max_iterations)  # 0.75->0.9
-            threshold = 0.7
+            # threshold = 0.7
 
-            # 阈值修改策略1-展平entmap后按序排列，前百分之γ的分位线作为选取像素的阈值
-            # alpha_t = 20*(1-epoch/config['epochs'])
-            # with torch.no_grad():
-            #     entropy = -torch.sum(prob_all[num_labeled:] * torch.log(prob_all[num_labeled:] + 1e-10), dim=1)
-            #     thresh = np.percentile(entropy.cpu().numpy().flatten(), 100-alpha_t)
-            #     low_entropy_mask = entropy.le(thresh).float()
+            # 阈值修改策略1-展平entmap后按升序排列，前百分之γ的分位线作为选取像素的阈值
+            gamma = 25
+            with torch.no_grad():
+                thresh = np.percentile(EMap.cpu().numpy().flatten(), gamma)
+                # 小于thr的值为1，此时前gamma%的低熵值被选中为1，即打了mask的为0，不打的为1
+                ent_mask_mul = EMap.le(thresh).float()
+                # 此时打了mask的为1，不打的为0
+                ent_mask = -1 * ent_mask_mul + 1
+
+                ent_mask_mul = torch.unsqueeze(ent_mask_mul, 1)
+
+            # print('entmask:', ent_mask)
+            # print('size: ', ent_mask.shape)
 
 
 
@@ -341,8 +350,9 @@ def train(args, snapshot_path):
             # ----------------给原始图像盖上mask
             # mask_unlabeled_volume_batch, mask = random_mask_zero(unlabeled_volume_batch, args.mask_patch_size, args.patch_size[0], args.mask_ratio)
             # mask_unlabeled_volume_batch = ent_mask_zero(unlabeled_volume_batch, EMap, threshold)
-            mask_unlabeled_volume_batch, ent_mask = ent_mask_patch_countnum(unlabeled_volume_batch, EMap, threshold, args.mask_patch_size, args.patch_size[0])
+            # mask_unlabeled_volume_batch, ent_mask = ent_mask_patch_countnum(unlabeled_volume_batch, EMap, threshold, args.mask_patch_size, args.patch_size[0])
 
+            mask_unlabeled_volume_batch = unlabeled_volume_batch * ent_mask_mul
             # print('mask_unlabeled_volume_batch_shape:', mask_unlabeled_volume_batch.shape)
             # [12, 1, 256, 256]
 
@@ -372,10 +382,11 @@ def train(args, snapshot_path):
             
             ''' '''
             loss_ce_2_mask_1 = loss_ce_2 * ent_mask_1.float()
-            loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / (ent_mask_1.sum()+10e-5)
+            # loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / (ent_mask_1.sum()+10e-5)
+            loss_ce_2_mask_1 = loss_ce_2_mask_1.sum() / ent_mask_1.sum()
             loss_ce_2_mask_2 = loss_ce_2 * ent_mask_2.float()
-            loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / (ent_mask_2.sum()+10e-5)
-
+            # loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / (ent_mask_2.sum()+10e-5)
+            loss_ce_2_mask_2 = loss_ce_2_mask_2.sum() / ent_mask_2.sum()
             loss_ce_2 = args.lambda_mask * loss_ce_2_mask_1 + loss_ce_2_mask_2
             
 
@@ -414,15 +425,20 @@ def train(args, snapshot_path):
                               consistency_loss, iter_num)
             writer.add_scalar('info/consistency_weight',
                               consistency_weight, iter_num)
-            writer.add_scalar('info/threshold', threshold, iter_num)
+            # writer.add_scalar('info/threshold', threshold, iter_num)
             writer.add_scalar('info/masksum', ent_mask_1.sum(), iter_num)            
             writer.add_scalar('info/nomasksum', ent_mask_2.sum(), iter_num)
 
             
 
+            # logging.info(
+            #     'iteration %d : loss : %f, loss_ce: %f, loss_dice: %f, threshold: %f, masksum: %d, nomasksum: %d' %
+            #     (iter_num, loss.item(), loss_ce.item(), loss_dice.item(), threshold, masksum, nomasksum ))
+
             logging.info(
-                'iteration %d : loss : %f, loss_ce: %f, loss_dice: %f, threshold: %f, masksum: %d, nomasksum: %d' %
-                (iter_num, loss.item(), loss_ce.item(), loss_dice.item(), threshold, masksum, nomasksum ))
+                'iteration %d : loss : %f, loss_ce: %f, loss_dice: %f, masksum: %d, nomasksum: %d' %
+                (iter_num, loss.item(), loss_ce.item(), loss_dice.item(), masksum, nomasksum ))
+
 
             # 获取当前设备
             # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

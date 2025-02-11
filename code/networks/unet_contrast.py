@@ -114,11 +114,11 @@ class Encoder(nn.Module):
         x3 = self.down3(x2)
         x4 = self.down4(x3)
         return [x0, x1, x2, x3, x4]
+    
 
-
-class Decoder(nn.Module):
+class Decoder_Contrast(nn.Module):
     def __init__(self, params):
-        super(Decoder, self).__init__()
+        super(Decoder_Contrast, self).__init__()
         self.params = params
         self.in_chns = self.params['in_chns']
         self.ft_chns = self.params['feature_chns']
@@ -135,9 +135,6 @@ class Decoder(nn.Module):
         self.up4 = UpBlock(
             self.ft_chns[1], self.ft_chns[0], self.ft_chns[0], dropout_p=0.0)
 
-        self.out_conv = nn.Conv2d(self.ft_chns[0], self.n_class,
-                                  kernel_size=3, padding=1)
-
     def forward(self, feature):
         x0 = feature[0]
         x1 = feature[1]
@@ -149,45 +146,46 @@ class Decoder(nn.Module):
         x = self.up2(x, x2)
         x = self.up3(x, x1)
         x = self.up4(x, x0)
-        output = self.out_conv(x)
-        return output
+        return x                    # return the feature map, not the prediction
 
 
-def Dropout(x, p=0.3):
-    x = torch.nn.functional.dropout(x, p)
-    return x
+class Projector_Contrast(nn.Module):        # conv1 -> pool -> relu -> conv2 -> pool 
+    def __init__(self, feature_dim=16, patch_num=4, output_num=256):
+        super(Projector_Contrast, self).__init__() 
+        self.feature_dim = feature_dim
+        self.output_num = output_num
+        self.pool_num = 32//patch_num
+        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(feature_dim, output_num//2, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(output_num//2, output_num, kernel_size=3, padding=1)
+        self.pool1 = nn.MaxPool2d(kernel_size=8)
+        self.pool2 = nn.MaxPool2d(kernel_size=self.pool_num)
+        
 
-
-def FeatureDropout(x):
-    attention = torch.mean(x, dim=1, keepdim=True)
-    max_val, _ = torch.max(attention.view(
-        x.size(0), -1), dim=1, keepdim=True)
-    threshold = max_val * np.random.uniform(0.7, 0.9)
-    threshold = threshold.view(x.size(0), 1, 1, 1).expand_as(attention)
-    drop_mask = (attention < threshold).float()
-    x = x.mul(drop_mask)
-    return x
-
-
-class FeatureNoise(nn.Module):
-    def __init__(self, uniform_range=0.3):
-        super(FeatureNoise, self).__init__()
-        self.uni_dist = Uniform(-uniform_range, uniform_range)
-
-    def feature_based_noise(self, x):
-        noise_vector = self.uni_dist.sample(
-            x.shape[1:]).to(x.device).unsqueeze(0)
-        x_noise = x.mul(noise_vector) + x
-        return x_noise
-
-    def forward(self, x):
-        x = self.feature_based_noise(x)
+    def forward(self, x):           # [bs, 16, 256, 256]
+        x = self.conv1(x)           # [bs, 128, 256, 256]
+        x = self.pool1(x)           # [bs, 128, 32, 32]
+        x = self.relu(x)            # [bs, 128, 32, 32]
+        x = self.conv2(x)           # [bs, 256, 32, 32]
+        x = self.pool2(x)           # [bs, 256, 4, 4]
         return x
+    
+
+class Classifier_Contrast(nn.Module):       # only one conv layer, match the original Unet
+    def __init__(self, feature_dim=16, num_class=4):
+        super(Classifier_Contrast, self).__init__()
+        self.feature_dim = feature_dim
+        self.num_class = num_class
+        self.out_conv = nn.Conv2d(self.feature_dim, self.num_class, kernel_size=3, padding=1)
+    
+    def forward(self, feature):
+        output = self.out_conv(feature)
+        return output
 
 
-class UNet(nn.Module):
-    def __init__(self, in_chns, class_num):
-        super(UNet, self).__init__()
+class UNet_Contrast(nn.Module):
+    def __init__(self, in_chns, class_num, patch_num):
+        super(UNet_Contrast, self).__init__()
 
         params = {'in_chns': in_chns,
                   'feature_chns': [16, 32, 64, 128, 256],
@@ -197,31 +195,32 @@ class UNet(nn.Module):
                   'acti_func': 'relu'}
 
         self.encoder = Encoder(params)
-        self.decoder = Decoder(params)
+        self.decoder = Decoder_Contrast(params)
+        self.projector = Projector_Contrast(
+            feature_dim=params['feature_chns'][0],
+            patch_num=patch_num,
+            output_num=params['feature_chns'][-1],
+        )
+        self.classifier = Classifier_Contrast(
+            feature_dim=params['feature_chns'][0], 
+            num_class=params['class_num']
+        )
+
+    def forward_c(self, x):
+        feature = self.encoder(x)
+        output = self.decoder(feature)
+        prediction = self.classifier(output)
+        return prediction                   # return classifier
+
+    def forward_p(self, x):
+        feature = self.encoder(x)
+        output = self.decoder(feature)
+        features = self.projector(output)
+        return features                     # return projector
 
     def forward(self, x):
         feature = self.encoder(x)
         output = self.decoder(feature)
-        return output
-
-
-class FeatureUNet(nn.Module):
-    def __init__(self, in_chns, class_num):
-        super(UNet, self).__init__()
-
-        params = {'in_chns': in_chns,
-                  'feature_chns': [16, 32, 64, 128, 256],
-                  'dropout': [0.05, 0.1, 0.2, 0.3, 0.5],
-                  'class_num': class_num,
-                  'bilinear': False,
-                  'acti_func': 'relu'}
-
-        self.encoder = Encoder(params)
-        self.decoder = Decoder(params)
-
-    def forward(self, x):
-        feature = self.encoder(x)
-        output = self.decoder(feature)
-        return output
-
-
+        prediction = self.classifier(output)
+        features = self.projector(output)
+        return prediction, features
