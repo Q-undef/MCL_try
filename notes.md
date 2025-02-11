@@ -47,3 +47,11 @@
 - 类似CGML（Mask生成方法：对于每一个patch中的像素熵值取平均，然后按升序排列，给定一个r，前[r*n]个块被选中为mask）
 ### 当前结果汇总
 ![image](https://github.com/user-attachments/assets/eb5e9229-694c-43a2-904b-dce7df57c342)
+
+# (24/12.27-25/2.12)
+## 实现了取平均按比例mask
+- 运行结果不太理想
+![image](https://github.com/user-attachments/assets/947c103a-d987-494a-9f9b-320c6e675855)
+
+## 尝试添加hint机制（类似AttMask）
+- 正在跑实验
