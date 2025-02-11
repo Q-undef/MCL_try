@@ -130,6 +130,54 @@ def shuffle(data, batch_num, patch_num, image_size, s=None, dim=4):
     data_shuffle = torch.cat(data_shuffled, dim=0)
     return data_shuffle, s
 
+
+
+'''
+def shuffle(data, batch_num, patch_num, image_size, s=None, dim=4):
+    # Split the data into batches
+    data_splits = torch.split(data, data.shape[0] // batch_num, dim=0)
+    
+    # Generate or use the provided shuffle indices
+    if s is None:
+        s = list(range(patch_num * patch_num * batch_num))
+        random.shuffle(s)
+    
+    # Precompute patch size
+    patch_size = image_size // patch_num
+    
+    # Initialize the shuffled data tensor
+    data_shuffled = torch.zeros_like(data)
+    
+    # Reshape s to a 2D tensor for easier indexing
+    s_tensor = torch.tensor(s).view(batch_num, patch_num * patch_num)
+    
+    # Iterate over each batch
+    for batch_idx in range(batch_num):
+        # Get the shuffle indices for the current batch
+        batch_shuffle_indices = s_tensor[batch_idx]
+        
+        # Iterate over each patch in the batch
+        for i, shuffle_idx in enumerate(batch_shuffle_indices):
+            # Calculate the original batch, row, and column for the current patch
+            splits_batch = shuffle_idx // (patch_num * patch_num)
+            splits_row = (shuffle_idx % (patch_num * patch_num)) // patch_num
+            splits_column = shuffle_idx % patch_num
+            
+            # Calculate the target row and column in the shuffled data
+            shuffled_row = i // patch_num
+            shuffled_column = i % patch_num
+            
+            # Copy the patch from the original data to the shuffled data
+            if dim == 4:
+                data_shuffled[batch_idx, :, shuffled_row * patch_size:(shuffled_row + 1) * patch_size, shuffled_column * patch_size:(shuffled_column + 1) * patch_size] = \
+                    data_splits[splits_batch][:, :, splits_row * patch_size:(splits_row + 1) * patch_size, splits_column * patch_size:(splits_column + 1) * patch_size]
+            elif dim == 3:
+                data_shuffled[batch_idx, :, shuffled_row * patch_size:(shuffled_row + 1) * patch_size, shuffled_column * patch_size:(shuffled_column + 1) * patch_size] = \
+                    data_splits[splits_batch][:, splits_row * patch_size:(splits_row + 1) * patch_size, splits_column * patch_size:(splits_column + 1) * patch_size]
+    
+    return data_shuffled, s
+'''
+
 # 计算熵
 def entropy_map(p, C = 4):
     # p N*C*W*H，n是样本数量，c是类别数量，w*h是图片大小
